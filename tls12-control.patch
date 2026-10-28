@@ -1,0 +1,19 @@
+diff --git a/net/tlsdial/tlsdial.go b/net/tlsdial/tlsdial.go
+index 417c925..ec2a52d 100644
+--- a/net/tlsdial/tlsdial.go
++++ b/net/tlsdial/tlsdial.go
+@@ -80,6 +80,14 @@ func Config(ht *health.Tracker, base *tls.Config) *tls.Config {
+ 	}
+ 	conf.RootCAs = nil // we do our own verification in VerifyConnection
+ 
++	// WIN-TLS12 PATCH (fork of v1.104.4): pin all control/DERP/log dials to
++	// TLS 1.2 max. Go 1.27 ClientHellos advertise the ML-DSA (0x0904-0x0906)
++	// post-quantum signature algorithms, which some TLS-inspecting middleboxes
++	// silently drop (uni/corporate firewalls; see tailscale/tailscale#21708
++	// and https://tldr.fail). ML-DSA entries only appear in TLS 1.3 hellos,
++	// so capping at TLS 1.2 restores connectivity behind such middleboxes.
++	conf.MaxVersion = tls.VersionTLS12
++
+ 	// Note: we do NOT set conf.ServerName here (as we accidentally did
+ 	// previously), as this path is also used when dialing an HTTPS proxy server
+ 	// (through which we'll send a CONNECT request to get a TCP connection to do

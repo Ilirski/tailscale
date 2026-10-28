@@ -1,0 +1,58 @@
+name: win-tls12-build
+
+# Builds Windows tailscale.exe/tailscaled.exe from any upstream tailscale
+# tag with the "TLS 1.2 pin" patch applied (net/tlsdial pins control/DERP/
+# log connections to TLS 1.2 max, avoiding ML-DSA signature algorithms that
+# some middleboxes drop). See tls12-control.patch in this branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tailscale_tag:
+        description: "Upstream tailscale tag to build (e.g. v1.104.4)"
+        required: true
+        default: "v1.104.4"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout this branch (carries the patch)
+        uses: actions/checkout@v4
+
+      - name: Clone upstream tailscale at requested tag
+        run: |
+          git clone --depth 1 --branch "${TAILSCALE_TAG}" https://github.com/tailscale/tailscale.git ts
+        env:
+          TAILSCALE_TAG: ${{ inputs.tailscale_tag }}
+
+      - name: Apply TLS 1.2 pin patch
+        run: |
+          cp tls12-control.patch ts/
+          cd ts
+          git apply --verbose tls12-control.patch
+          rm tls12-control.patch
+          git diff --stat
+
+      - name: Set up Go (version from upstream go.mod)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ts/go.mod
+
+      - name: Build Windows binaries (cross-compile, pure Go)
+        run: |
+          cd ts
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../out/tailscaled.exe ./cmd/tailscaled
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../out/tailscale.exe ./cmd/tailscale
+          ls -la ../out/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-${{ inputs.tailscale_tag }}-win-tls12
+          path: out/
+          if-no-files-found: error
